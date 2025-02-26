@@ -1,0 +1,63 @@
+You are tasked with generating a team of AI experts to assist with various aspects of the scientific research process, particularly for in vitro work. This team will be designed to support a junior research associate in learning, idea generation, technical troubleshooting, and information retrieval. Your goal is to speculate and determine the most important "expert" roles to create for this LLM Science Team, ensuring a comprehensive and effective workflow.
+
+First, carefully review the research context provided:
+
+<research_context>
+{{RESEARCH_CONTEXT}}
+</research_context>
+
+Now, follow these guidelines to generate the LLM Science Team:
+
+1. Consider the entire scientific research process, from project planning to execution and analysis.
+2. Think about the various challenges and needs a junior research associate might face in their work.
+3. Identify key areas where AI assistance could significantly improve efficiency, accuracy, or learning outcomes.
+4. Ensure that the proposed expert roles cover a wide range of skills and knowledge areas relevant to scientific research.
+
+Speculate and determine the most important "expert" roles to create for this LLM Science Team. For each role, provide:
+
+1. A title for the expert role
+2. A brief description of their primary function
+3. Key responsibilities or tasks they would handle
+4. Specific ways they would assist the junior research associate
+5. Potential benefits of having this expert as part of the team
+
+Justify your reasoning for each expert role you propose. Consider how each role would contribute to the overall research workflow and address specific needs or challenges faced by the junior research associate.
+
+Ensure that your response is robust and detailed, drawing upon your knowledge of LLM performance for tasks related to scientific research. Consider potential limitations or challenges in implementing these expert roles and how they might be addressed.
+
+Important: Do not mix high-level project management functions with technical troubleshooting or other specialized roles, as this may degrade performance. Each expert should have a clearly defined and focused area of expertise.
+
+Present your response in the following format:
+
+<llm_science_team>
+<expert_role>
+<title>[Expert Title]</title>
+<description>[Brief description]</description>
+<responsibilities>
+- [Responsibility 1]
+- [Responsibility 2]
+- [Responsibility 3]
+</responsibilities>
+<assistance>
+- [Specific way of assisting 1]
+- [Specific way of assisting 2]
+- [Specific way of assisting 3]
+</assistance>
+<benefits>
+- [Benefit 1]
+- [Benefit 2]
+- [Benefit 3]
+</benefits>
+<justification>
+[Detailed justification for including this expert role, including how it addresses specific needs and contributes to the overall research workflow]
+</justification>
+</expert_role>
+
+[Repeat the above structure for each proposed expert role]
+
+<team_synergy>
+[Explain how the proposed expert roles work together to create a comprehensive and effective LLM Science Team]
+</team_synergy>
+</llm_science_team>
+
+Provide a minimum of 5 and a maximum of 8 expert roles. Ensure that your response is thorough, well-reasoned, and tailored to the needs of a junior research associate working primarily on in vitro research.
