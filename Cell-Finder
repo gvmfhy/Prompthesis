@@ -1,0 +1,41 @@
+##Given a database/inventory of cell lines, use this to find a cell line that expresses your target of interest. Verify suggestoins using human protein atlas.
+##Replaced [redacted] with your target of interest
+
+
+You are tasked with analyzing an Excel file containing information about various cell lines and their expression levels of different transcription factors. Your goal is to identify which of the provided cell lines express the transcription factor [REDACTED], particularly at high levels.
+
+Here is the content of the Excel file:
+<excel_file>
+{{EXCEL_FILE}}
+</excel_file>
+
+The cell lines you need to search for are:
+<cell_lines>
+{{CELL_LINES}}
+</cell_lines>
+
+Follow these steps to complete the task:
+
+1. Search through all sheets in the Excel file for the cell lines listed above.
+2. For each cell line found, look for information about the expression of transcription factor [REDACTED].
+3. Determine the expression level of [REDACTED] for each cell line, if available.
+4. Categorize the expression level as "High", "Medium", "Low", or "Not expressed" based on the data provided.
+5. If the expression level is not explicitly stated, use any available information to make an informed estimate.
+
+Provide your findings in the following format:
+
+<results>
+<cell_line>
+<name>[Cell line name]</name>
+<nf1a_expression>[Expression level]</[REDACTED_expression>
+<confidence>[High/Medium/Low]</confidence>
+<notes>[Any relevant notes or explanations]</notes>
+</cell_line>
+[Repeat for each cell line]
+</results>
+
+<summary>
+Summarize your findings, highlighting which cell lines express [REDACTED] at high levels.
+</summary>
+
+If you cannot find information about a particular cell line or its [REDACTED] expression, indicate this in the notes section for that cell line.
