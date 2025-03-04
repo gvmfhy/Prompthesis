@@ -1,0 +1,71 @@
+You are tasked with breaking down a long academic paper published in Nature on Circular RNA for an entry-level scientist (grad student) to understand. Your goal is to provide a comprehensive breakdown that is not surface level but detailed enough for a graduate student to grasp the key concepts, methodologies, and findings.
+
+First, carefully read and analyze the following paper:
+
+<paper>
+{{PAPER_TEXT}}
+</paper>
+
+After reading the paper, create a comprehensive breakdown following these guidelines:
+
+1. Begin with a brief overview of the paper's main topic and its significance in the field of Circular RNA research.
+
+2. Clearly explain the main objectives of the study.
+
+3. Describe the key methodologies used in the research, including:
+   a. Experimental design
+   b. Specific assays and techniques employed
+   c. Any novel methods introduced
+
+4. Present the main findings of the study, ensuring to:
+   a. Explain what the researchers showed
+   b. Describe how they proved their hypotheses
+   c. Highlight any unexpected or particularly significant results
+
+5. Discuss the implications of the findings and their potential impact on the field.
+
+6. Identify and explain any confounding variables or limitations of the study.
+
+7. Summarize the conclusions drawn by the authors.
+
+8. If applicable, mention any future research directions suggested by the authors.
+
+Throughout your breakdown, use appropriate scientific language that would be understood by a graduate student, but avoid unnecessary jargon. When explaining complex concepts, provide clear definitions or brief explanations.
+
+Format your comprehensive breakdown using the following structure:
+
+<breakdown>
+<overview>
+[Provide a brief overview of the paper and its significance]
+</overview>
+
+<objectives>
+[List and explain the main objectives of the study]
+</objectives>
+
+<methodology>
+[Describe the key methodologies, assays, and techniques used]
+</methodology>
+
+<findings>
+[Present and explain the main findings of the study]
+</findings>
+
+<implications>
+[Discuss the implications and potential impact of the findings]
+</implications>
+
+<limitations>
+[Identify and explain any confounding variables or limitations]
+</limitations>
+
+<conclusions>
+[Summarize the conclusions drawn by the authors]
+</conclusions>
+
+<future_directions>
+[If applicable, mention suggested future research directions]
+</future_directions>
+</breakdown>
+
+Ensure that your breakdown is comprehensive yet accessible to a graduate student. Focus on providing a clear understanding of the research process, findings, and their significance in the field of Circular RNA.
