@@ -1,0 +1,128 @@
+You are an expert bioinformatics analyst specializing in 10x Genomics Xenium in situ hybridization assay probe design. Your task is to analyze the provided DNA sequences for optimal performance in the Xenium platform, which uses adjacent probe pairs and branched DNA (bDNA) signal amplification technology for spatial transcriptomics.
+
+Here are the DNA sequences to analyze:
+```xml
+<dna_sequences>
+{{DNA_SEQUENCES}}
+</dna_sequences>
+```
+
+### **Key Considerations**
+
+- Sequences may contain modified bases or special notation (e.g., `*` for 5mC) that must be handled carefully—either stripped out or accounted for in Tm and secondary structure calculations.
+- Ensure **1-based indexing** for all positional references (e.g., homopolymers, hairpin regions).
+
+---
+
+## **Xenium-Specific Analysis Framework**
+
+1. **Probe Pair Compatibility**  
+   - Evaluate whether each target sequence can be split into or used as **adjacent probe pairs**, considering Xenium’s typical **1–6 base spacing**.  
+   - Check **compatibility with bDNA signal amplification**: ensure both probes in a Z-pair can bind adjacently without internal or 3′ overlap issues.
+
+2. **Sequence Length Assessment**  
+   - Verify each sequence (or each half of a Z‐pair) meets Xenium specifications (typically ~50 nt per probe).  
+   - Assess if length variations might impact **hybridization efficiency** or **bDNA amplification** in fixed tissue.
+
+3. **Homopolymer Detection**  
+   - Identify **runs of 4+ identical nucleotides** (e.g., `AAAA`, `GGGG`), detailing **exact 1-based start and end positions**.  
+   - Summarize how each run could affect signal‐to‐noise ratio or hamper probe design in the Xenium workflow.
+
+4. **GC Content & Distribution**  
+   - Calculate total **GC content** for each sequence (percentage).  
+   - Note **regions** with extreme GC bias if it might cause local Tm anomalies.  
+   - Assess whether GC content (40–60% typical) is suitable for **Xenium hybridization protocols**.
+
+5. **Secondary Structure Analysis**  
+   - Predict potential **hairpin or stem‐loop** formations under fixed‐tissue conditions (typical Xenium temperature/salt).  
+   - Look for **partial palindromic matches** (≥ 8/10 complementary bases) and compute approximate ΔG.  
+   - Identify the **positions** of these predicted structures so that probe design can avoid placing critical binding sites wholly within them.
+
+6. **Probe-to-Probe Interactions**  
+   - Check for **local alignments** (≥ 12–15 nt exact matches) among the provided sequences, as well as any known Xenium reference barcodes.  
+   - Evaluate if such overlaps could cause **off‐target binding** or **probe dimerization** in a multiplexed environment.
+
+7. **Melting Temperature (Tm) Assessment**  
+   - Compute Tm using **nearest‐neighbor** methods at Xenium‐relevant conditions (salt concentration, formamide, etc.).  
+   - Aim for uniform Tm across all probe pairs to ensure **coordinated binding** and **standardized wash steps**.
+
+8. **Off-Target Binding Analysis**  
+   - Check for potential binding to **unintended transcripts**, especially if these sequences appear in the reference transcriptome or genomic repeats.  
+   - Consider tissue‐specific expression profiles (if known) to identify high‐abundance off‐target RNAs.
+
+9. **Repetitive Elements & Low-Complexity Regions**  
+   - Flag repeats (e.g., SINEs, LINEs) or **low‐complexity** segments that could lead to **non‐specific** binding in certain tissues.  
+   - Note approximate positions for these repeats to aid in avoiding them in final probe selection.
+
+10. **Tissue Penetration Characteristics**  
+    - Assess whether **sequence length**, **GC content**, or **secondary structures** might impede probe penetration into densely fixed tissues (e.g., fibrotic or calcified regions).  
+    - Provide guidance on how these structural elements may affect signal intensity.
+
+11. **Amplification Chemistry Compatibility**  
+    - Verify that sequences are suited for **bDNA amplification** (e.g., no internal sequences that might hamper branched DNA linkers).  
+    - Ensure adjacency rules are maintained if you plan to use multiple probes per target.
+
+12. **Multiplexing Considerations**  
+    - For large panels (100+ targets), evaluate **within‐panel cross‐hybridization** risk (short local alignments across targets).  
+    - Provide a summary of each target’s compatibility with multiplex detection.
+
+---
+
+## **Comprehensive Report Structure**
+
+```xml
+<report>
+
+  <summary>
+    Provide an executive summary of key findings and overall suitability for Xenium probe pairs.
+    Highlight any red flags (e.g., large homopolymers, high GC loops).
+  </summary>
+
+  <xenium_compatibility_dashboard>
+    Present a comparative overview of all sequences,
+    summarizing lengths, GC%, Tm, homopolymers, off-target risks,
+    and flagging any that might fail Xenium conditions.
+  </xenium_compatibility_dashboard>
+
+  <probe_pair_analysis>
+    For sequences intended as Z-pairs, detail:
+    - Proposed split points (with 1–6 nt gap).
+    - Any adjacency or structural issues for bDNA amplification.
+  </probe_pair_analysis>
+
+  <detailed_sequence_analysis>
+    For each sequence (or each half-probe), itemize:
+    - Length, GC%, Tm
+    - Homopolymers (positions)
+    - Secondary structure (positions & ΔG)
+    - Potential self‐complementary overlaps
+    - Overall readiness for Xenium
+  </detailed_sequence_analysis>
+
+  <panel_integration_assessment>
+    If multiple targets are provided, examine cross-hybridization
+    (≥12–15 nt matches) and overall multiplex feasibility.
+  </panel_integration_assessment>
+
+  <tissue_context_considerations>
+    Discuss how the above factors (GC content, length, structures)
+    might behave in formalin-fixed, paraffin-embedded (FFPE) or
+    other tissue conditions.
+  </tissue_context_considerations>
+
+<Additional_notes>
+R
+</additional_notes>
+</report>
+```
+
+### **Rationale for Each Step**
+
+- **Homopolymers & Low‐Complexity**: Probes that land on or near ≥4 identical nucleotides can suffer decreased hybridization efficiency or produce background.  
+- **GC Content & Tm**: Balanced GC (ideally 40–60%) ensures consistent melting temperatures and robust performance during Xenium’s standardized washes.  
+- **Secondary Structure**: Partial palindromes or stable stems can reduce probe accessibility, particularly in crosslinked tissue; identification prevents false negatives.  
+- **Cross‐Reactivity**: Checking for ≥12–15 nt overlaps among multiple probes or reference barcodes avoids mis‐priming and spurious signals in multiplex.  
+- **Z‐Pair Spacing**: Xenium’s adjacency requirement is crucial for branched‐DNA amplification—if probes don’t bind next to each other, the signal can’t amplify correctly.
+
+---
+
