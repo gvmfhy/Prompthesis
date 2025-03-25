@@ -1,0 +1,682 @@
+##### Still getting this working. does not query open targets yet
+# Drug Target Discovery Pipeline for GSE46602
+# This pipeline processes gene expression data to identify potential drug targets
+
+import os
+import sys
+import argparse
+import logging
+import pandas as pd
+import numpy as np
+import gzip
+import re
+from sklearn.preprocessing import StandardScaler
+from scipy import stats
+import networkx as nx
+import matplotlib.pyplot as plt
+import seaborn as sns
+import requests
+from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stderr)
+    ]
+)
+logger = logging.getLogger('drug_target_pipeline')
+
+class DrugTargetPipeline:
+    def __init__(self, matrix_file, output_dir=None, p_threshold=0.05, fc_threshold=1.0):
+        """
+        Initialize the drug target discovery pipeline.
+        
+        Args:
+            matrix_file (str): Path to GEO Series Matrix file
+            output_dir (str): Directory to save results
+            p_threshold (float): P-value threshold for significance
+            fc_threshold (float): Log2 fold change threshold
+        """
+        self.matrix_file = matrix_file
+        self.output_dir = output_dir or os.path.join("results", f"GSE46602_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        self.p_threshold = p_threshold
+        self.fc_threshold = fc_threshold
+        
+        # Create output directories
+        os.makedirs(os.path.join(self.output_dir, "data"), exist_ok=True)
+        os.makedirs(os.path.join(self.output_dir, "figures"), exist_ok=True)
+        
+        # Initialize data containers
+        self.expression_data = None
+        self.metadata = None
+        self.normalized_data = None
+        self.differential_results = None
+        self.significant_genes = None
+        self.network = None
+        self.target_scores = None
+        
+        logger.info(f"Pipeline initialized with matrix file: {matrix_file}")
+        logger.info(f"Results will be saved to: {self.output_dir}")
+        
+    def parse_geo_matrix(self):
+        """Parse the GEO Series Matrix file to extract expression data and metadata."""
+        logger.info(f"Parsing GEO Series Matrix file: {self.matrix_file}")
+        
+        # Initialize containers for metadata and expression data
+        metadata_lines = []
+        data_lines = []
+        sample_ids = []
+        in_data_section = False
+        
+        # Open and read the gzipped file
+        try:
+            with gzip.open(self.matrix_file, 'rt') as f:
+                for line in f:
+                    if line.startswith('!'):
+                        # This is a metadata line
+                        metadata_lines.append(line.strip())
+                    elif line.startswith('#'):
+                        # Comment line, skip
+                        continue
+                    elif "ID_REF" in line:
+                        # Header row with sample IDs
+                        sample_ids = line.strip().split('\t')[1:]
+                        in_data_section = True
+                    elif in_data_section:
+                        # Expression data rows
+                        data_lines.append(line.strip())
+        except Exception as e:
+            logger.error(f"Error reading matrix file: {e}")
+            raise
+        
+        # Process metadata
+        self._extract_metadata(metadata_lines, sample_ids)
+        
+        # Process expression data
+        self._extract_expression_data(data_lines, sample_ids)
+        
+        logger.info(f"Parsed {len(self.expression_data)} genes and {len(self.metadata)} samples")
+        return self.expression_data, self.metadata
+    
+    def _extract_metadata(self, metadata_lines, sample_ids):
+        """Extract sample metadata from the GEO matrix file metadata lines."""
+        metadata_dict = {sample_id: {} for sample_id in sample_ids}
+        
+        for line in metadata_lines:
+            if '!Sample_' in line and not line.startswith('!Sample_table_begin'):
+                parts = line.split('=', 1)
+                if len(parts) == 2:
+                    key = parts[0].replace('!Sample_', '').strip()
+                    values = parts[1].strip().split('\t')
+                    
+                    # Skip the first empty column
+                    if len(values) > 1:
+                        values = values[1:]
+                    
+                    # Add to metadata if we have the right number of values
+                    if len(values) == len(sample_ids):
+                        for i, sample_id in enumerate(sample_ids):
+                            metadata_dict[sample_id][key] = values[i]
+        
+        # Convert to DataFrame
+        self.metadata = pd.DataFrame.from_dict(metadata_dict, orient='index')
+        
+        # Save metadata to file
+        metadata_path = os.path.join(self.output_dir, "data", "GSE46602_metadata.csv")
+        self.metadata.to_csv(metadata_path)
+        logger.info(f"Metadata saved to {metadata_path}")
+    
+    def _extract_expression_data(self, data_lines, sample_ids):
+        """Extract expression data from the GEO matrix file."""
+        # Process expression data
+        data_rows = []
+        row_ids = []
+        
+        for line in data_lines:
+            parts = line.split('\t')
+            if len(parts) >= len(sample_ids) + 1:
+                row_id = parts[0]
+                row_ids.append(row_id)
+                data_rows.append([float(x) if x != 'NA' else np.nan for x in parts[1:]])
+        
+        # Create expression DataFrame
+        self.expression_data = pd.DataFrame(data_rows, index=row_ids, columns=sample_ids)
+        
+        # Save expression data to file
+        expr_path = os.path.join(self.output_dir, "data", "GSE46602_expression.csv")
+        self.expression_data.to_csv(expr_path)
+        logger.info(f"Expression data saved to {expr_path}")
+    
+    def preprocess_data(self):
+        """Preprocess the expression data, including normalization and NA handling."""
+        logger.info("Preprocessing expression data")
+        
+        if self.expression_data is None:
+            logger.error("No expression data available. Run parse_geo_matrix() first.")
+            return None
+        
+        # Handle missing values (NaN)
+        logger.info(f"Original data shape: {self.expression_data.shape}")
+        logger.info(f"Missing values: {self.expression_data.isna().sum().sum()}")
+        
+        # Remove rows with too many NaN values (>20%)
+        threshold = 0.2 * self.expression_data.shape[1]
+        filtered_data = self.expression_data.dropna(thresh=threshold)
+        logger.info(f"After dropping rows with >20% NaNs: {filtered_data.shape}")
+        
+        # Fill remaining NaN values with the median of each probe
+        filled_data = filtered_data.fillna(filtered_data.median(axis=1))
+        
+        # Apply log2 transformation if necessary (check if already log-transformed)
+        data_max = filled_data.max().max()
+        if data_max > 100:  # Assuming data might not be log-transformed
+            logger.info("Applying log2 transformation")
+            filled_data = np.log2(filled_data + 1)
+        
+        # Normalize data using StandardScaler (Z-score normalization)
+        scaler = StandardScaler()
+        normalized_values = scaler.fit_transform(filled_data.T).T
+        self.normalized_data = pd.DataFrame(
+            normalized_values, 
+            index=filled_data.index, 
+            columns=filled_data.columns
+        )
+        
+        # Save normalized data
+        norm_path = os.path.join(self.output_dir, "data", "GSE46602_normalized.csv")
+        self.normalized_data.to_csv(norm_path)
+        logger.info(f"Normalized data saved to {norm_path}")
+        
+        return self.normalized_data
+    
+    def map_probes_to_genes(self):
+        """Map probe IDs to gene symbols using a simple mapping approach."""
+        logger.info("Mapping probe IDs to gene symbols")
+        
+        if self.normalized_data is None:
+            logger.error("No normalized data available. Run preprocess_data() first.")
+            return None
+        
+        # Extract gene symbols from probe IDs using regex
+        # This is a simplified approach; in a real scenario, we would use a proper mapping database
+        probe_to_gene = {}
+        for probe_id in self.normalized_data.index:
+            # Try to extract gene symbol from probe ID or description
+            match = re.search(r'([A-Za-z0-9]+)_at', probe_id)
+            if match:
+                probe_to_gene[probe_id] = match.group(1)
+            else:
+                probe_to_gene[probe_id] = probe_id  # Keep original ID if no match
+        
+        # Create a new DataFrame with gene symbols as index
+        gene_expr = self.normalized_data.copy()
+        gene_expr['gene_symbol'] = [probe_to_gene.get(probe_id, probe_id) for probe_id in gene_expr.index]
+        
+        # For genes with multiple probes, take the median expression
+        gene_expr = gene_expr.reset_index()
+        gene_expr = gene_expr.rename(columns={'index': 'probe_id'})
+        
+        # Group by gene symbol and aggregate
+        gene_aggregated = gene_expr.groupby('gene_symbol').agg({
+            col: 'median' for col in gene_expr.columns if col not in ['probe_id', 'gene_symbol']
+        })
+        
+        # Replace normalized data with gene-mapped data
+        self.normalized_data = gene_aggregated
+        
+        # Save gene-mapped data
+        gene_path = os.path.join(self.output_dir, "data", "GSE46602_gene_mapped.csv")
+        self.normalized_data.to_csv(gene_path)
+        logger.info(f"Gene-mapped expression data saved to {gene_path}")
+        
+        return self.normalized_data
+    
+    def perform_differential_analysis(self, control_group='normal', case_group='tumor'):
+        """Perform differential expression analysis to identify significant genes."""
+        logger.info("Performing differential expression analysis")
+        
+        if self.normalized_data is None or self.metadata is None:
+            logger.error("Expression data or metadata not available. Run preprocess_data() first.")
+            return None
+        
+        # Look for a column in metadata that might contain group information
+        group_col = None
+        for col in self.metadata.columns:
+            unique_vals = self.metadata[col].unique()
+            if len(unique_vals) == 2 and all(g in unique_vals for g in [control_group, case_group]):
+                group_col = col
+                break
+            
+        if not group_col:
+            # If not found, look for columns with 'source', 'tissue', or 'status' in the name
+            for keyword in ['source', 'tissue', 'status', 'group', 'disease']:
+                potential_cols = [col for col in self.metadata.columns if keyword.lower() in col.lower()]
+                if potential_cols:
+                    # Check if any of these columns have 2 unique values
+                    for col in potential_cols:
+                        if len(self.metadata[col].unique()) == 2:
+                            group_col = col
+                            control_group = self.metadata[col].unique()[0]
+                            case_group = self.metadata[col].unique()[1]
+                            break
+                if group_col:
+                    break
+        
+        if not group_col:
+            logger.error(f"Could not find a suitable column to divide samples into '{control_group}' and '{case_group}' groups.")
+            logger.info(f"Available columns: {list(self.metadata.columns)}")
+            return None
+        
+        logger.info(f"Using column '{group_col}' to divide samples into groups")
+        logger.info(f"Control group: {control_group}, Case group: {case_group}")
+        
+        # Divide samples into control and case groups
+        control_samples = self.metadata[self.metadata[group_col] == control_group].index
+        case_samples = self.metadata[self.metadata[group_col] == case_group].index
+        
+        logger.info(f"Control samples: {len(control_samples)}")
+        logger.info(f"Case samples: {len(case_samples)}")
+        
+        # Check if we have enough samples
+        if len(control_samples) < 2 or len(case_samples) < 2:
+            logger.error("Not enough samples in control or case group (minimum 2 required)")
+            return None
+        
+        # Perform t-test for each gene
+        results = []
+        for gene in self.normalized_data.index:
+            control_expr = self.normalized_data.loc[gene, control_samples]
+            case_expr = self.normalized_data.loc[gene, case_samples]
+            
+            t_stat, p_val = stats.ttest_ind(case_expr, control_expr, equal_var=False)
+            log2_fc = case_expr.mean() - control_expr.mean()  # Data is already log2-transformed
+            
+            results.append({
+                'gene': gene,
+                'log2_fold_change': log2_fc,
+                'p_value': p_val,
+                'control_mean': control_expr.mean(),
+                'case_mean': case_expr.mean()
+            })
+        
+        # Convert to DataFrame
+        self.differential_results = pd.DataFrame(results)
+        
+        # Apply Benjamini-Hochberg correction for multiple testing
+        self.differential_results['adjusted_p_value'] = stats.false_discovery_rate_correction(
+            self.differential_results['p_value'], method='indep')[1]
+        
+        # Identify significant genes
+        self.significant_genes = self.differential_results[
+            (self.differential_results['adjusted_p_value'] < self.p_threshold) & 
+            (abs(self.differential_results['log2_fold_change']) > self.fc_threshold)
+        ]
+        
+        # Save results
+        diff_path = os.path.join(self.output_dir, "data", "GSE46602_differential.csv")
+        self.differential_results.to_csv(diff_path, index=False)
+        logger.info(f"Differential analysis results saved to {diff_path}")
+        
+        sig_path = os.path.join(self.output_dir, "data", "GSE46602_significant.csv")
+        self.significant_genes.to_csv(sig_path, index=False)
+        logger.info(f"Found {len(self.significant_genes)} significant genes (saved to {sig_path})")
+        
+        return self.significant_genes
+    
+    def construct_network(self, n_top_genes=500):
+        """Construct gene co-expression network using correlation."""
+        logger.info("Constructing gene co-expression network")
+        
+        if self.normalized_data is None:
+            logger.error("Normalized expression data not available.")
+            return None
+        
+        # If we have significant genes, use them; otherwise, take top n most variable genes
+        if self.significant_genes is not None and len(self.significant_genes) > 0:
+            top_genes = list(self.significant_genes['gene'])[:n_top_genes]
+            logger.info(f"Using {len(top_genes)} significant genes for network construction")
+        else:
+            # Calculate variance for each gene
+            gene_var = self.normalized_data.var(axis=1).sort_values(ascending=False)
+            top_genes = list(gene_var.index)[:n_top_genes]
+            logger.info(f"Using {len(top_genes)} most variable genes for network construction")
+        
+        # Extract expression data for top genes
+        expr_data = self.normalized_data.loc[top_genes]
+        
+        # Calculate correlation matrix
+        corr_matrix = expr_data.T.corr(method='pearson')
+        
+        # Save correlation matrix
+        corr_path = os.path.join(self.output_dir, "data", "correlation_matrix.csv")
+        corr_matrix.to_csv(corr_path)
+        logger.info(f"Correlation matrix saved to {corr_path}")
+        
+        # Create network (use absolute correlation as weight, with threshold)
+        threshold = 0.7
+        network = nx.Graph()
+        
+        # Add nodes
+        for gene in top_genes:
+            network.add_node(gene)
+        
+        # Add edges for high correlations
+        for i, gene1 in enumerate(top_genes):
+            for gene2 in top_genes[i+1:]:
+                corr = abs(corr_matrix.loc[gene1, gene2])
+                if corr > threshold:
+                    network.add_edge(gene1, gene2, weight=corr)
+        
+        self.network = network
+        logger.info(f"Network constructed with {network.number_of_nodes()} nodes and {network.number_of_edges()} edges")
+        
+        # Save network
+        nx.write_gexf(network, os.path.join(self.output_dir, "data", "gene_network.gexf"))
+        
+        return self.network
+    
+    def analyze_network(self):
+        """Analyze the gene network to identify potential drug targets."""
+        logger.info("Analyzing network for potential drug targets")
+        
+        if self.network is None:
+            logger.error("Network not available. Run construct_network() first.")
+            return None
+        
+        # Calculate network centrality measures
+        degree_centrality = nx.degree_centrality(self.network)
+        betweenness_centrality = nx.betweenness_centrality(self.network)
+        eigenvector_centrality = nx.eigenvector_centrality(self.network, max_iter=1000)
+        
+        # Create a DataFrame with centrality measures
+        centrality_df = pd.DataFrame({
+            'gene': list(self.network.nodes()),
+            'degree_centrality': [degree_centrality[g] for g in self.network.nodes()],
+            'betweenness_centrality': [betweenness_centrality[g] for g in self.network.nodes()],
+            'eigenvector_centrality': [eigenvector_centrality[g] for g in self.network.nodes()]
+        })
+        
+        # Calculate composite score
+        centrality_df['composite_score'] = (
+            centrality_df['degree_centrality'] + 
+            centrality_df['betweenness_centrality'] + 
+            centrality_df['eigenvector_centrality']
+        ) / 3
+        
+        # Sort by composite score
+        centrality_df = centrality_df.sort_values('composite_score', ascending=False)
+        
+        # Save results
+        centrality_path = os.path.join(self.output_dir, "data", "network_targets.csv")
+        centrality_df.to_csv(centrality_path, index=False)
+        logger.info(f"Network analysis results saved to {centrality_path}")
+        
+        self.target_scores = centrality_df
+        return self.target_scores
+    
+    def validate_targets(self, top_n=20):
+        """Validate potential targets using OpenTargets API."""
+        logger.info("Validating top targets with OpenTargets")
+        
+        if self.target_scores is None:
+            logger.error("Target scores not available. Run analyze_network() first.")
+            return None
+        
+        # Get top N targets
+        top_targets = self.target_scores.head(top_n)
+        
+        # This would normally query OpenTargets API, but here we'll simulate the results
+        logger.info(f"Would validate {len(top_targets)} targets using OpenTargets API")
+        
+        # Example validation result (in a real pipeline, this would come from the OpenTargets API)
+        validation_results = []
+        for i, (_, target) in enumerate(top_targets.iterrows()):
+            gene = target['gene']
+            validation_results.append({
+                'gene': gene,
+                'composite_score': target['composite_score'],
+                'drug_associations': i % 3,  # Simulate some drug associations
+                'disease_associations': (i % 5) + 2,  # Simulate disease associations
+                'drugability_score': round(0.5 + (i % 10) / 20, 2)  # Simulate drugability score
+            })
+        
+        # Create final targets DataFrame
+        final_targets = pd.DataFrame(validation_results)
+        
+        # Save results
+        final_path = os.path.join(self.output_dir, "data", "GSE46602_final_targets.csv")
+        final_targets.to_csv(final_path, index=False)
+        logger.info(f"Validated targets saved to {final_path}")
+        
+        return final_targets
+    
+    def generate_visualizations(self):
+        """Generate visualizations for the pipeline results."""
+        logger.info("Generating visualizations")
+        
+        # Set plot style
+        plt.style.use('seaborn-v0_8')
+        
+        # 1. Volcano plot of differential expression
+        if self.differential_results is not None:
+            plt.figure(figsize=(10, 8))
+            
+            # Plot all genes
+            plt.scatter(
+                self.differential_results['log2_fold_change'],
+                -np.log10(self.differential_results['adjusted_p_value']),
+                alpha=0.5,
+                color='gray',
+                label='Not significant'
+            )
+            
+            # Highlight significant genes
+            if self.significant_genes is not None and len(self.significant_genes) > 0:
+                plt.scatter(
+                    self.significant_genes['log2_fold_change'],
+                    -np.log10(self.significant_genes['adjusted_p_value']),
+                    alpha=0.8,
+                    color='red',
+                    label='Significant'
+                )
+            
+            plt.axhline(-np.log10(self.p_threshold), linestyle='--', color='blue')
+            plt.axvline(self.fc_threshold, linestyle='--', color='blue')
+            plt.axvline(-self.fc_threshold, linestyle='--', color='blue')
+            
+            plt.xlabel('Log2 Fold Change')
+            plt.ylabel('-Log10 Adjusted P-value')
+            plt.title('Volcano Plot: Differential Expression')
+            plt.legend()
+            plt.tight_layout()
+            
+            # Save the figure
+            plt.savefig(os.path.join(self.output_dir, "figures", "volcano_plot.png"), dpi=300)
+            plt.close()
+        
+        # 2. Network visualization (simplified for top genes)
+        if self.network is not None and self.target_scores is not None:
+            # Get top 30 genes for visualization
+            top_genes = list(self.target_scores.head(30)['gene'])
+            
+            # Create subgraph with only these genes
+            subgraph = self.network.subgraph(top_genes)
+            
+            plt.figure(figsize=(12, 10))
+            
+            # Define node sizes based on centrality
+            node_sizes = [
+                self.target_scores[self.target_scores['gene'] == gene]['composite_score'].values[0] * 1000
+                for gene in subgraph.nodes()
+            ]
+            
+            # Define edge weights for visualization
+            edge_weights = [
+                subgraph[u][v]['weight'] * 2 for u, v in subgraph.edges()
+            ]
+            
+            # Draw the graph
+            pos = nx.spring_layout(subgraph, seed=42)
+            nx.draw_networkx(
+                subgraph,
+                pos=pos,
+                with_labels=True,
+                node_size=node_sizes,
+                node_color='skyblue',
+                edge_color='gray',
+                width=edge_weights,
+                alpha=0.8,
+                font_size=10
+            )
+            
+            plt.title('Top Genes Network')
+            plt.axis('off')
+            plt.tight_layout()
+            
+            # Save the figure
+            plt.savefig(os.path.join(self.output_dir, "figures", "network_visualization.png"), dpi=300)
+            plt.close()
+        
+        # 3. Bar plot of top targets
+        if self.target_scores is not None:
+            top_n = min(20, len(self.target_scores))
+            top_targets = self.target_scores.head(top_n)
+            
+            plt.figure(figsize=(12, 8))
+            
+            sns.barplot(
+                x='composite_score',
+                y='gene',
+                data=top_targets,
+                palette='viridis'
+            )
+            
+            plt.title(f'Top {top_n} Potential Drug Targets')
+            plt.xlabel('Composite Network Score')
+            plt.ylabel('Gene')
+            plt.tight_layout()
+            
+            # Save the figure
+            plt.savefig(os.path.join(self.output_dir, "figures", "top_targets.png"), dpi=300)
+            plt.close()
+        
+        logger.info("Visualizations generated and saved to figures directory")
+    
+    def run_pipeline(self):
+        """Run the complete drug target discovery pipeline."""
+        logger.info("Starting drug target discovery pipeline")
+        
+        try:
+            # Step 1: Parse GEO matrix file
+            self.parse_geo_matrix()
+            
+            # Step 2: Preprocess data
+            self.preprocess_data()
+            
+            # Step 3: Map probes to genes
+            self.map_probes_to_genes()
+            
+            # Step 4: Perform differential expression analysis
+            self.perform_differential_analysis()
+            
+            # Step 5: Construct gene network
+            self.construct_network()
+            
+            # Step 6: Analyze network for potential targets
+            self.analyze_network()
+            
+            # Step 7: Validate targets
+            self.validate_targets()
+            
+            # Step 8: Generate visualizations
+            self.generate_visualizations()
+            
+            # Create summary report
+            self._create_summary_report()
+            
+            logger.info("Pipeline completed successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Pipeline failed: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+    
+    def _create_summary_report(self):
+        """Create a summary report of the pipeline results."""
+        logger.info("Creating summary report")
+        
+        summary_path = os.path.join(self.output_dir, "summary.txt")
+        
+        with open(summary_path, 'w') as f:
+            f.write("# Drug Target Discovery Pipeline Summary\n\n")
+            f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Dataset: GSE46602\n\n")
+            
+            f.write("## Dataset Statistics\n")
+            if self.expression_data is not None:
+                f.write(f"- Samples: {self.expression_data.shape[1]}\n")
+                f.write(f"- Probes/Genes: {self.expression_data.shape[0]}\n\n")
+            
+            f.write("## Differential Expression Analysis\n")
+            if self.significant_genes is not None:
+                f.write(f"- Significant genes: {len(self.significant_genes)}\n")
+                f.write(f"- Up-regulated: {sum(self.significant_genes['log2_fold_change'] > 0)}\n")
+                f.write(f"- Down-regulated: {sum(self.significant_genes['log2_fold_change'] < 0)}\n\n")
+            
+            f.write("## Network Analysis\n")
+            if self.network is not None:
+                f.write(f"- Network nodes: {self.network.number_of_nodes()}\n")
+                f.write(f"- Network edges: {self.network.number_of_edges()}\n\n")
+            
+            f.write("## Top Potential Drug Targets\n")
+            if self.target_scores is not None:
+                top_10 = self.target_scores.head(10)
+                for i, (_, target) in enumerate(top_10.iterrows()):
+                    f.write(f"{i+1}. {target['gene']} (score: {target['composite_score']:.4f})\n")
+        
+        logger.info(f"Summary report saved to {summary_path}")
+
+
+def main():
+    """Main function to run the pipeline."""
+    parser = argparse.ArgumentParser(description='Drug Target Discovery Pipeline')
+    parser.add_argument('--matrix-file', type=str, 
+                      default='GSE46602_series_matrix.txt.gz',
+                      help='Path to GEO Series Matrix file')
+    parser.add_argument('--output-dir', type=str, 
+                      help='Output directory for results')
+    parser.add_argument('--p-threshold', type=float, default=0.05,
+                      help='P-value threshold for significance')
+    parser.add_argument('--fc-threshold', type=float, default=1.0,
+                      help='Log2 fold change threshold for significance')
+    parser.add_argument('--skip-validation', action='store_true',
+                      help='Skip target validation step')
+    parser.add_argument('--top-genes', type=int, default=500,
+                      help='Number of top genes to use for network construction')
+    
+    args = parser.parse_args()
+    
+    # Create and run the pipeline
+    pipeline = DrugTargetPipeline(
+        matrix_file=args.matrix_file,
+        output_dir=args.output_dir,
+        p_threshold=args.p_threshold,
+        fc_threshold=args.fc_threshold
+    )
+    
+    success = pipeline.run_pipeline()
+    
+    if success:
+        print(f"Pipeline completed successfully. Results saved to: {pipeline.output_dir}")
+        return 0
+    else:
+        print("Pipeline failed. Check logs for details.")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
