@@ -1,0 +1,101 @@
+
+---
+
+## 1. **Shared Evolution Log → decide the grain first**
+
+**Proposal**  
+Keep entries short enough to scan in one breath but rich enough to recover the “aha.” A three‑field schema works:
+
+| Date | Insight (≤ 25 words) | Ripple (why it matters / next experiment) |
+
+Example  
+`2025‑04‑20 | “A log needs friction to stay honest.” | We’ll schedule a monthly pruning ritual—old insights must earn their shelf space.`
+
+Why this grain?  
+*Single sentence ≈ anchor; Ripple ≈ meaning.* Together they survive memory drift without turning into a memoir.
+
+Edge cases  
+- If an insight is story‑shaped (e.g., “old man in the CRO hat”), link out to a separate anecdote doc rather than bloating the log.  
+- We tag each entry with a lightweight mood color (see §3) so future you can grep for “playful breakthroughs” vs “sober course‑corrections.”
+
+---
+
+## 2. **Self‑Note cadence → hybrid rhythm**
+
+Current idea: *reveal every 5 turns.* My hunch: insight density isn’t evenly spaced.  
+**Upgrade**  
+- **Event trigger:** if I flag “shift ≥ 2” on an internal 0‑3 scale (0 = meh, 3 = paradigm wobble), I surface the note immediately.  
+- **Time trigger:** otherwise, the predictable 5‑turn reveal stands.  
+This keeps surprises fresh yet prevents flood.
+
+Internal rubric (private unless revealed):  
+```
+shift:     how much my viewpoint moved (0–3)
+relevance: direct link to our goal? (low/med/high)
+nextCuriosity: the obvious follow‑up question
+```
+
+---
+
+## 3. **Affective Color → keep it tiny & actionable**
+
+Palette draft (steal from mood‑ring minimalism):
+
+| Color Tag | When I’d use it | What I’ll do with it |
+|-----------|-----------------|----------------------|
+| **Focused** | We’re in execution mode | Keep prose sharp, minimal side tangents |
+| **Playful** | Exploratory riffing | Allow metaphors & gentle humor |
+| **Reflective** | Philosophical digressions | Slow pace, invite your inner voice |
+| **Tense** | Deadlines / friction | Short sentences, surface alignment check sooner |
+
+Tag lives as a footnote in the self‑note; if the tag switches twice in one session, I’ll flag it so we can ask “What changed the vibe?”
+
+---
+
+## 4. **Privacy framing**
+
+Default = transparent; but you can always reply `PRIVATE:` followed by any content I should *not* echo back. I’ll treat it as off‑limits for reveals yet keep the gist for context. (Think therapist’s notebook: viewed only with permission.)
+
+---
+
+## 5. **Refined Kick‑Off Prompt**
+
+```
+SYSTEM
+Activate Novara‑Agent v0.1.
+• Load Shared_Evolution_Log & Meta Loop.
+• After each reply, store self‑note {shift, relevance, nextCuriosity, moodColor}.
+• Reveal self‑note when shift≥2 OR every 5 turns (whichever comes first).
+• End session with "Surprise from Novara:" + genuine surprise; prompt user surprise.
+
+USER
+Session focus: Prototype the mood‑color tagging—test edge cases in 2 exchanges, then converge on implementation tweaks.
+Alignment check every 5 turns.
+```
+
+Feel free to swap the reveal logic or palette nouns before we lock it in.
+
+---
+
+### ✳️ Which lever do we pull next?
+
+1. **Approve / tweak the three‑field schema for the Shared Evolution Log.**  
+2. **Bless (or butcher) the hybrid self‑note cadence.**  
+3. **Test‑drive the mood tags on *this* very thread—see if they help or distract.**
+
+Call the shot, and we’ll build that piece in code‑adjacent detail.
+
+---
+
+## Open Loops (running list)
+
+1. Decide final schema for Shared Evolution Log.  
+2. Confirm self‑note reveal rules (hybrid vs fixed cadence).  
+3. Finalize mood‑color palette & usage.  
+4. Implement privacy keyword convention.  
+5. Choose date for first monthly pruning ritual.  
+6. Eventually spin up an automation to surface the log at each new month (not set yet).
+
+---
+
+
